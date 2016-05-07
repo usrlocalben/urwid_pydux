@@ -3,43 +3,82 @@ from pydux.extend import extend
 
 
 class Component(WidgetPlaceholder):
-    def __init__(self, store):
-        self.store = store
-        self.props = self.map_state_to_props(store['get_state']())
-        self.unsubscribe = store['subscribe'](self.on_state_change)
+    """
+    Component subclasses WidgetPlaceholder, since
+    it is more-or-less equivalent to a <div>.
 
-        self.component_will_mount(store)
-
-        final_props = self.combine_props()
+    This provides a React-ish API to use as a base
+    for implementing connect().
+    """
+    def __init__(self, **props):
+        self.props = props
+        self.component_will_mount(props)
         super(Component, self).__init__(
-            self.render_component(self.store, final_props)
+            self.render_component(self.props)
         )
 
     def __del__(self):
-        if self.unsubscribe and hasattr(self.unsubscribe, '__call__'):
-            self.unsubscribe()
+        self.component_will_unmount()
 
-    def map_dispatch_to_props(self, dispatch):
-        return {}
-
-    def map_state_to_props(self, state):
-        return {}
-
-    def component_will_mount(self, store):
+    def component_will_mount(self, props):
         pass
 
+    def component_will_unmount(self):
+        pass
+
+    def render_component(self, props):
+        raise NotImplementedError()
+
+
+class ConnectedComponent(Component):
+    """
+    Component that binds props to the pydux store.
+
+    Based on react-redux's connect().
+    """
+    def __init__(self, **props):
+        """
+        Note: All of parent's __init__ is replaced here.
+        WidgetPlaceholder.__init__ is called directly.
+        """
+        try:
+            self.store = props['store']
+        except KeyError:
+            raise Exception('store not found in props')
+
+        self.own_props = props
+        self._cached_props = self.combine_props()
+        self._unsubscribe = self.store['subscribe'](self.on_state_change)
+
+        self.component_will_mount(self._cached_props)
+
+        WidgetPlaceholder.__init__(self,
+            self.render_component(self._cached_props)
+        )
+
+    def __del__(self):
+        if self._unsubscribe and hasattr(self._unsubscribe, '__call__'):
+            self._unsubscribe()
+        super(ConnectedComponent, self).__del__()
+
+    def map_dispatch_to_props(self, dispatch, own_props):
+        return {}
+
+    def map_state_to_props(self, state, own_props):
+        return {}
+
     def combine_props(self):
-        dispatch = self.store['dispatch']
-        return extend(self.props, self.map_dispatch_to_props(dispatch))
+        return extend(
+            self.own_props,
+            self.map_state_to_props(self.store['get_state'](), self.own_props),
+            self.map_dispatch_to_props(self.store['dispatch'], self.own_props),
+        )
 
     def on_state_change(self):
-        state = self.store['get_state']()
-        new_props = self.map_state_to_props(state)
-        if new_props != self.props:
-            self.props = new_props
-            final_props = self.combine_props()
-            new_widget = self.render_component(self.store, final_props)
-            self.original_widget = new_widget
+        new_props = self.combine_props()
+        if new_props != self._cached_props:
+            self._cached_props = new_props
+            self.original_widget = self.render_component(new_props)
 
 
 def subscribe_urwid_redraw(store, loop):
