@@ -2,19 +2,6 @@ from urwid import WidgetPlaceholder
 from pydux.extend import extend
 
 
-def subscribe_urwid_redraw(store, loop):
-    last_state = [None]  # r/w closure
-    get_state = store['get_state']
-
-    def maybe_redraw():
-        state = get_state()
-        if not last_state[0] is state:
-            last_state[0] = state
-            loop.draw_screen()
-
-    return store['subscribe'](maybe_redraw)
-
-
 class Component(WidgetPlaceholder):
     def __init__(self, store):
         self.store = store
@@ -53,3 +40,28 @@ class Component(WidgetPlaceholder):
             final_props = self.combine_props()
             new_widget = self.render_component(self.store, final_props)
             self.original_widget = new_widget
+
+
+def subscribe_urwid_redraw(store, loop):
+    """
+    issue a redraw request to the urwid MainLoop
+    when changes occur to the state container.
+
+    Args:
+        store: Pydux store
+        loop: urwid MainLoop instance
+
+    Returns:
+        a pydux unsubscribe() function that will
+        disconnect this listener when called.
+    """
+    last_state = [None]  # r/w closure
+    get_state = store['get_state']
+
+    def maybe_redraw():
+        state = get_state()
+        if not last_state[0] is state:
+            last_state[0] = state
+            loop.draw_screen()
+
+    return store['subscribe'](maybe_redraw)
