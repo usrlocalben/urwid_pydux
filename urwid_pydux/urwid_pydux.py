@@ -10,8 +10,11 @@ class Component(WidgetPlaceholder):
     This provides a React-ish API to use as a base
     for implementing connect().
     """
+    prop_types = {}
+
     def __init__(self, **props):
         self.props = props
+        self.ensure_props_are_valid(props)
         self.component_will_mount(props)
         super(Component, self).__init__(
             self.render_component(self.props)
@@ -29,6 +32,23 @@ class Component(WidgetPlaceholder):
     def render_component(self, props):
         raise NotImplementedError()
 
+    def ensure_props_are_valid(self, props):
+        spec_keys = set(self.prop_types.keys())
+        given_keys = set(props.keys())
+
+        unknown = given_keys - spec_keys
+        if unknown:
+            msg = 'Component received unknown props: ' + str(unknown)
+            raise Exception(msg)
+
+        missing = spec_keys - given_keys
+        if missing:
+            msg = 'Component is missing props: ' + str(missing)
+            raise Exception(msg)
+
+        # TODO prop type checking
+        # TODO is_required checking
+
 
 class ConnectedComponent(Component):
     """
@@ -36,6 +56,8 @@ class ConnectedComponent(Component):
 
     Based on react-redux's connect().
     """
+    prop_types = {}
+
     def __init__(self, **props):
         """
         Note: All of parent's __init__ is replaced here.
@@ -45,6 +67,9 @@ class ConnectedComponent(Component):
             self.store = props['store']
         except KeyError:
             raise Exception('store not found in props')
+
+        self.prop_types = extend({'store': dict}, self.prop_types)
+        self.ensure_props_are_valid(props)
 
         self.own_props = props
         self._cached_props = self.combine_props()
